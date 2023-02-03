@@ -1,2 +1,6 @@
 /.bsp/
 target/
+
+.idea/codeStyles
+.idea/libraries
+.idea

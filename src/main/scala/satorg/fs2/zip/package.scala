@@ -22,7 +22,6 @@
 package satorg.fs2
 
 import cats.effect._
-import cats.effect.concurrent.Deferred
 import cats.syntax.all._
 import fs2._
 
@@ -36,18 +35,18 @@ package object zip {
   type ZipPipe[F[_]] = Pipe[F, ZipEntry[F], Byte]
   type UnzipPipe[F[_]] = Pipe[F, Byte, ZipEntry[F]]
 
-  def zipPipe[F[_]: ContextShift](blocker: Blocker)(
+  def zipPipe[F[_]](
       implicit
-      F: Concurrent[F],
+      F: Async[F],
       config: ZipConfig
   ): ZipPipe[F] = { entries =>
-    io.readOutputStream[F](blocker, config.chunkSize) {
-      mkJZipOutputStreamResource(blocker, config)(_).use { zipOut =>
-        val writeOutput = io.writeOutputStream[F](F.pure(zipOut), blocker, closeAfterUse = false)
+    io.readOutputStream[F](config.chunkSize) {
+      mkJZipOutputStreamResource(config)(_).use { zipOut =>
+        val writeOutput = io.writeOutputStream[F](F.pure(zipOut), closeAfterUse = false)
 
         entries
           .evalMap { entry =>
-            blocker.delay { zipOut.putNextEntry(entry.toJava) } >>
+            Async[F].delay { zipOut.putNextEntry(entry.toJava) } >>
               entry.body.through(writeOutput).compile.drain
           }
           .compile
@@ -56,19 +55,19 @@ package object zip {
     }
   }
 
-  def unzipPipe[F[_]: ContextShift](blocker: Blocker)(
+  def unzipPipe[F[_]](
       implicit
-      F: ConcurrentEffect[F],
+      F: Async[F],
       config: ZipConfig
   ): UnzipPipe[F] = { zipped =>
     Stream
       .resource(
         io.toInputStreamResource[F](zipped)
-          .flatMap { mkJZipInputStreamResource[F](blocker, config) }
+          .flatMap { mkJZipInputStreamResource[F](config) }
       )
       .flatMap { zipIn =>
         def emitNextEntry: ZipEntryStream[F] = Stream.force {
-          blocker
+          Async[F]
             .delay { zipIn.getNextEntry }
             .flatMap {
               case null =>
@@ -79,13 +78,12 @@ package object zip {
                     io.readInputStream[F](
                       F.pure(zipIn),
                       config.chunkSize,
-                      blocker,
                       closeAfterUse = false
-                    ).onFinalize(deferred.complete(()))
+                    ).onFinalize(deferred.complete(()).void)
 
                   val entry = ZipEntry.fromJavaAndBody(jEntry, body)
 
-                  Stream.emit(entry) ++ Stream.eval_(deferred.get) ++ emitNextEntry
+                  Stream.emit(entry) ++ Stream.eval(deferred.get).drain ++ emitNextEntry
                 }
             }
         }
@@ -94,19 +92,17 @@ package object zip {
       }
   }
 
-  private[this] def mkJZipInputStreamResource[F[_]: ContextShift](
-      blocker: Blocker,
+  private[this] def mkJZipInputStreamResource[F[_]](
       config: ZipConfig
-  )(input: InputStream)(implicit F: Sync[F]) =
-    Resource.fromAutoCloseableBlocking[F, JZip.ZipInputStream](blocker)(F.delay {
+  )(input: InputStream)(implicit F: Async[F]) =
+    Resource.fromAutoCloseable[F, JZip.ZipInputStream](F.delay {
       new JZip.ZipInputStream(input, config.charset)
     })
 
-  private[this] def mkJZipOutputStreamResource[F[_]: ContextShift](
-      blocker: Blocker,
+  private[this] def mkJZipOutputStreamResource[F[_]](
       config: ZipConfig
-  )(output: OutputStream)(implicit F: Sync[F]) =
-    Resource.fromAutoCloseableBlocking(blocker)(F.delay {
+  )(output: OutputStream)(implicit F: Async[F]) =
+    Resource.fromAutoCloseable(F.delay {
       new JZip.ZipOutputStream(output, config.charset)
     })
 }

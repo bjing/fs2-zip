@@ -26,10 +26,10 @@ import cats.syntax.all._
 import fs2._
 import munit.CatsEffectSuite
 
-class UnzipFileSuite extends CatsEffectSuite with BlockerFixture {
+class UnzipFileSuite extends CatsEffectSuite {
   import UnzipFileSuite._
 
-  private val inputFixture = ResourceFixture(blockerResource.flatMap(InputFixture.resource))
+  private val inputFixture = ResourceFixture(InputFixture.resource)
 
   private val expectedResults =
     Vector(
@@ -51,7 +51,7 @@ class UnzipFileSuite extends CatsEffectSuite with BlockerFixture {
     "unzipPipe: should unzip files and directories from a test zip archive"
   ) { fixture =>
     fixture.input
-      .through(unzipPipe(fixture.blocker))
+      .through(unzipPipe)
       .flatMap(decodeEntry)
       .compile
       .toVector
@@ -62,7 +62,7 @@ class UnzipFileSuite extends CatsEffectSuite with BlockerFixture {
     "unzipPipe: should allow processing unzipped entries in parallel"
   ) { fixture =>
     fixture.input
-      .through(unzipPipe(fixture.blocker))
+      .through(unzipPipe)
       .map(decodeEntry)
       .parJoinUnbounded
       .compile
@@ -73,18 +73,18 @@ class UnzipFileSuite extends CatsEffectSuite with BlockerFixture {
 }
 
 object UnzipFileSuite {
-  class InputFixture private (val blocker: Blocker, val input: Stream[IO, Byte])
+  class InputFixture private (val input: Stream[IO, Byte])
 
   object InputFixture {
     private final val testZip = "/test.zip"
     private final val chunkSize = 256
 
-    def resource(blocker: Blocker)(implicit cs: ContextShift[IO]): Resource[IO, InputFixture] =
+    def resource: Resource[IO, InputFixture] =
       Resource
-        .fromAutoCloseableBlocking(blocker)(IO { getClass.getResourceAsStream(testZip) })
+        .fromAutoCloseable(IO { getClass.getResourceAsStream(testZip) })
         .ensure(throw new RuntimeException(s"cannot load '$testZip'")) { _ != null }
         .map(IO.pure)
-        .map { io.readInputStream(_, chunkSize, blocker) }
-        .map { new InputFixture(blocker, _) }
+        .map { io.readInputStream(_, chunkSize) }
+        .map { new InputFixture(_) }
   }
 }

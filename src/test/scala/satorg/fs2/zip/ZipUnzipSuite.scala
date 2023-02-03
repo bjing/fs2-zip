@@ -28,13 +28,11 @@ import org.scalacheck._
 import org.scalacheck.effect.PropF
 import scodec.bits.ByteVector
 
-class ZipUnzipSuite extends CatsEffectSuite with ScalaCheckEffectSuite with BlockerFixture {
+class ZipUnzipSuite extends CatsEffectSuite with ScalaCheckEffectSuite {
 
-  private val blockerFixture = ResourceFixture(blockerResource)
-
-  blockerFixture.test(
+  test(
     "zipPipe and unzipPipe should compress and decompress streams correctly"
-  ) { blocker =>
+  ) {
     val gen =
       Gen.mapOf {
         val entryPathGen =
@@ -70,16 +68,16 @@ class ZipUnzipSuite extends CatsEffectSuite with ScalaCheckEffectSuite with Bloc
           )
         }
         // compress to byte stream
-        .through(zipPipe(blocker))
+        .through(zipPipe)
         // convert to a single item chunk of bytes
         .chunks
         .fold(Chunk.Queue.empty[Byte])(_ :+ _)
-        .map(_.toChunk)
+        .map(values => Chunk.array(values.toArray))
         // create a new stream of bytes from the chunk
         .flatMap(Stream.chunk)
         .rechunkRandomly()
         // decompress from byte stream
-        .through(unzipPipe(blocker))
+        .through(unzipPipe)
         // extract each entry into a separate `ByteVector`
         .evalMap { unzippedEntry =>
           unzippedEntry.body.compile.to(ByteVector).map {

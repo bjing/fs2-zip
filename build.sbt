@@ -38,7 +38,7 @@ ThisBuild / libraryDependencies ++= Seq(
   "co.fs2" %% "fs2-io" % Versions.Fs2,
   "org.scalameta" %% "munit" % Versions.MUnit % Test,
   "org.scalameta" %% "munit-scalacheck" % Versions.MUnit % Test,
-  "org.typelevel" %% "munit-cats-effect-2" % Versions.MUnitCatsEffect % Test,
+  "org.typelevel" %% "munit-cats-effect-3" % Versions.MUnitCatsEffect % Test,
   "org.typelevel" %% "scalacheck-effect-munit" % Versions.ScalacheckEffect % Test
 )
 
